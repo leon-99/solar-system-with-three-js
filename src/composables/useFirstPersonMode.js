@@ -50,17 +50,18 @@ export function useFirstPersonMode() {
     
     console.log('Planet radius:', planet.userData.size)
     console.log('Player height:', playerHeight)
-    console.log('Surface offset:', planet.userData.size + playerHeight + 0.5)
-    console.log('Planet actual position:', planet.position)
-    console.log('Planet userData:', planet.userData)
     
     // Store original camera state
     const originalPosition = camera.position.clone()
     const originalRotation = camera.rotation.clone()
     
-    // Calculate planet surface position
+    // Calculate planet surface position - MUCH closer to surface
     const planetRadius = planet.userData.size
-    const surfaceOffset = planetRadius + playerHeight + 0.5 // Just above the surface
+    const surfaceOffset = planetRadius + 0.1 // Just 0.1m above surface (not playerHeight)
+    
+    console.log('Surface offset:', surfaceOffset)
+    console.log('Planet actual position:', planet.position)
+    console.log('Planet userData:', planet.userData)
     
     // Use the planet's actual current world position
     const planetPosition = planet.position.clone()
@@ -68,19 +69,19 @@ export function useFirstPersonMode() {
     // Initialize planet tracking for movement following
     planet.lastPosition = planetPosition.clone()
     
-    // Start player position just above planet surface
+    // Start player position just above planet surface (much closer)
     playerPosition.copy(planetPosition).add(new THREE.Vector3(0, surfaceOffset, 0))
     
     // Verify the starting position is valid
     const initialDistance = playerPosition.distanceTo(planetPosition)
     console.log('Initial distance from planet center:', initialDistance)
-    console.log('Expected distance:', planetRadius + playerHeight + 0.5)
+    console.log('Expected distance:', surfaceOffset)
     
-    if (Math.abs(initialDistance - (planetRadius + playerHeight + 0.5)) > 1) {
+    if (Math.abs(initialDistance - surfaceOffset) > 0.1) {
       console.warn('Starting position seems incorrect, adjusting...')
       // Force correct starting position
       const direction = playerPosition.clone().sub(planetPosition).normalize()
-      playerPosition.copy(planetPosition).add(direction.multiplyScalar(planetRadius + playerHeight + 0.5))
+      playerPosition.copy(planetPosition).add(direction.multiplyScalar(surfaceOffset))
     }
     
     // Setup player camera
@@ -89,12 +90,12 @@ export function useFirstPersonMode() {
     playerCamera.rotation.set(0, 0, 0)
     
     // Look at the horizon (look forward and slightly up)
-    const lookAtPoint = new THREE.Vector3(planetPosition.x + 5, surfaceOffset + 2, planetPosition.z + 5)
+    const lookAtPoint = new THREE.Vector3(planetPosition.x + 2, surfaceOffset + 1, planetPosition.z + 2)
     camera.lookAt(lookAtPoint)
     
-    // Create player body (invisible collision box)
+    // Create player body (invisible collision box) - MUCH smaller
     playerBody = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, playerHeight, 0.5),
+      new THREE.BoxGeometry(0.1, 0.1, 0.1), // Tiny invisible box
       new THREE.MeshBasicMaterial({ 
         color: 0x00ff00, 
         transparent: true, 
@@ -239,6 +240,8 @@ export function useFirstPersonMode() {
       // Move player by the same amount to stay on planet surface
       playerPosition.add(planetMovement)
       console.log('Player following planet movement:', planetMovement.length().toFixed(2), 'm')
+      console.log('Planet moved from:', planet.lastPosition, 'to:', planetPosition)
+      console.log('Player position after following:', playerPosition)
     }
     // Store current planet position for next frame
     planet.lastPosition = planetPosition.clone()
@@ -246,47 +249,33 @@ export function useFirstPersonMode() {
     // Handle input
     handleInput(deltaTime)
     
-    // INTELLIGENT COLLISION DETECTION - Only fix when significantly off surface
+    // SIMPLIFIED COLLISION - Always stay at exact surface distance
     const currentDistance = playerPosition.distanceTo(planetPosition)
-    const targetDistance = planetRadius + playerHeight + 0.1 // Always stay slightly above surface
-    const distanceTolerance = 0.5 // Only fix if more than 0.5m off surface
+    const targetDistance = planetRadius + 0.1 // Always stay 0.1m above surface
     
-    if (Math.abs(currentDistance - targetDistance) > distanceTolerance) {
-      // Force player to exact surface distance
+    // Force player to exact surface distance every frame (no tolerance needed)
+    if (Math.abs(currentDistance - targetDistance) > 0.01) {
       const direction = playerPosition.clone().sub(planetPosition).normalize()
       playerPosition.copy(planetPosition).add(direction.multiplyScalar(targetDistance))
-      console.log('Fixed position - was', currentDistance.toFixed(2), 'm off surface')
     }
     
-    // Apply planet-specific gravity (but much weaker since we're forcing position)
-    if (!playerOnGround) {
-      const planetGravity = getPlanetGravity(planet.userData.name.toLowerCase())
-      playerVelocity.y -= planetGravity * 0.1 * deltaTime // Reduced gravity
-      
-      // Limit fall speed
-      if (playerVelocity.y < -5) {
-        playerVelocity.y = -5
-      }
-    }
+    // NO GRAVITY - We're forcing position, so no physics needed
+    playerVelocity.y = 0 // Always zero Y velocity
     
-    // Update position with very limited movement
+    // Update position with horizontal movement only
     const movement = playerVelocity.clone().multiplyScalar(deltaTime)
-    // Only allow horizontal movement, force Y position
-    movement.y = 0
+    movement.y = 0 // No vertical movement
     playerPosition.add(movement)
     
-    // IMMEDIATE SURFACE ENFORCEMENT after any movement (with tolerance)
+    // Force back to surface after movement
     const newDistance = playerPosition.distanceTo(planetPosition)
-    if (Math.abs(newDistance - targetDistance) > distanceTolerance) {
+    if (Math.abs(newDistance - targetDistance) > 0.01) {
       const direction = playerPosition.clone().sub(planetPosition).normalize()
       playerPosition.copy(planetPosition).add(direction.multiplyScalar(targetDistance))
-      console.log('Surface enforced after movement - was', newDistance.toFixed(2), 'm off')
     }
     
-    // Set ground state based on velocity and distance
-    const isCloseToSurface = Math.abs(currentDistance - targetDistance) < distanceTolerance
-    const hasLowVelocity = Math.abs(playerVelocity.y) < 0.1
-    playerOnGround = isCloseToSurface && hasLowVelocity
+    // Player is always on ground since we force position
+    playerOnGround = true
     
     // Update camera position and rotation
     playerCamera.position.copy(playerPosition)
@@ -316,6 +305,11 @@ export function useFirstPersonMode() {
     playerVelocity.x = 0
     playerVelocity.z = 0
     
+    // Debug input
+    if (Object.keys(keys).length > 0) {
+      console.log('Keys pressed:', Object.keys(keys))
+    }
+    
     // Forward/backward movement
     if (keys['KeyW'] || keys['ArrowUp']) {
       const forward = new THREE.Vector3(0, 0, -1)
@@ -323,6 +317,7 @@ export function useFirstPersonMode() {
       forward.y = 0 // Keep movement horizontal
       forward.normalize()
       playerVelocity.add(forward.multiplyScalar(moveSpeed))
+      console.log('Moving forward, velocity:', playerVelocity)
     }
     
     if (keys['KeyS'] || keys['ArrowDown']) {
@@ -331,6 +326,7 @@ export function useFirstPersonMode() {
       backward.y = 0
       backward.normalize()
       playerVelocity.add(backward.multiplyScalar(moveSpeed))
+      console.log('Moving backward, velocity:', playerVelocity)
     }
     
     // Left/right movement
@@ -340,6 +336,7 @@ export function useFirstPersonMode() {
       left.y = 0
       left.normalize()
       playerVelocity.add(left.multiplyScalar(moveSpeed))
+      console.log('Moving left, velocity:', playerVelocity)
     }
     
     if (keys['KeyD'] || keys['ArrowRight']) {
@@ -348,19 +345,19 @@ export function useFirstPersonMode() {
       right.y = 0
       right.normalize()
       playerVelocity.add(right.multiplyScalar(moveSpeed))
+      console.log('Moving right, velocity:', playerVelocity)
     }
     
-    // Jumping (planet-specific jump force) - but only allow small jumps
+    // Jumping - simplified (no physics needed)
     if (keys['Space'] && playerOnGround) {
-      const planetGravity = getPlanetGravity(currentPlanet.value.userData.name.toLowerCase())
-      const adjustedJumpForce = Math.min(jumpForce * 0.3, 3) // Much smaller jumps
-      playerVelocity.y = adjustedJumpForce
-      playerOnGround = false
+      console.log('Jump attempted')
+      // No jumping for now - keep it simple
     }
     
     // Sprint
     if (keys['ShiftLeft']) {
       playerVelocity.multiplyScalar(1.5)
+      console.log('Sprinting, velocity:', playerVelocity)
     }
     
     // Apply friction when on ground
