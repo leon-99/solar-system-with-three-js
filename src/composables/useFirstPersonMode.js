@@ -55,9 +55,9 @@ export function useFirstPersonMode() {
     const originalPosition = camera.position.clone()
     const originalRotation = camera.rotation.clone()
     
-    // Calculate planet surface position - MUCH closer to surface
+    // Calculate planet surface position - Proper distance above surface
     const planetRadius = planet.userData.size
-    const surfaceOffset = planetRadius + 0.1 // Just 0.1m above surface (not playerHeight)
+    const surfaceOffset = planetRadius + 0.1 // 0.1m above surface (prevents clipping)
     
     console.log('Surface offset:', surfaceOffset)
     console.log('Planet actual position:', planet.position)
@@ -69,7 +69,7 @@ export function useFirstPersonMode() {
     // Initialize planet tracking for movement following
     planet.lastPosition = planetPosition.clone()
     
-    // Start player position just above planet surface (much closer)
+    // Start player position just above planet surface
     playerPosition.copy(planetPosition).add(new THREE.Vector3(0, surfaceOffset, 0))
     
     // Verify the starting position is valid
@@ -77,7 +77,7 @@ export function useFirstPersonMode() {
     console.log('Initial distance from planet center:', initialDistance)
     console.log('Expected distance:', surfaceOffset)
     
-    if (Math.abs(initialDistance - surfaceOffset) > 0.1) {
+    if (Math.abs(initialDistance - surfaceOffset) > 0.01) {
       console.warn('Starting position seems incorrect, adjusting...')
       // Force correct starting position
       const direction = playerPosition.clone().sub(planetPosition).normalize()
@@ -90,12 +90,12 @@ export function useFirstPersonMode() {
     playerCamera.rotation.set(0, 0, 0)
     
     // Look at the horizon (look forward and slightly up)
-    const lookAtPoint = new THREE.Vector3(planetPosition.x + 2, surfaceOffset + 1, planetPosition.z + 2)
+    const lookAtPoint = new THREE.Vector3(planetPosition.x + 0.5, surfaceOffset + 0.1, planetPosition.z + 0.5)
     camera.lookAt(lookAtPoint)
     
-    // Create player body (invisible collision box) - MUCH smaller
+    // Create player body (invisible collision box) - Small but not microscopic
     playerBody = new THREE.Mesh(
-      new THREE.BoxGeometry(0.1, 0.1, 0.1), // Tiny invisible box
+      new THREE.BoxGeometry(0.01, 0.01, 0.01), // 1cm invisible box (prevents clipping)
       new THREE.MeshBasicMaterial({ 
         color: 0x00ff00, 
         transparent: true, 
