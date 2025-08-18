@@ -45,13 +45,26 @@
     <!-- Planet Info Panel -->
     <PlanetInfoCard
       v-if="!loading && showInfoCard && followingPlanet"
-      :planet-name="getPlanetDisplayName(followingPlanet)"
-      :emoji="getPlanetEmoji(followingPlanet)"
-      :facts="getPlanetFacts(followingPlanet)"
-      :moons="getPlanetMoons(followingPlanet)"
-      :satellites="getPlanetSatellites(followingPlanet)"
+      :planet-name="getPlanetDisplayName(followingPlanet.userData.planetName)"
+      :emoji="getPlanetEmoji(followingPlanet.userData.planetName)"
+      :facts="getPlanetFacts(followingPlanet.userData.planetName)"
+      :moons="getPlanetMoons(followingPlanet.userData.planetName)"
+      :satellites="getPlanetSatellites(followingPlanet.userData.planetName)"
       @close="showInfoCard = false"
     />
+    
+    <!-- First Person Controls -->
+    <FirstPersonControls
+      v-if="!loading"
+      :is-first-person-mode="isFirstPersonMode"
+      :current-planet="currentPlanet"
+      :following-planet="followingPlanet"
+      :player-info="getPlayerInfo()"
+      @enter-first-person="handleEnterFirstPerson"
+      @exit-first-person="handleExitFirstPerson"
+    />
+    
+
   </div>
 </template>
 
@@ -59,7 +72,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { usePlanetSystem } from './composables/usePlanetSystem'
 import { usePlanetInfo } from './composables/usePlanetInfo'
-import { ControlButton, PlanetButton, PlanetInfoCard, LoadingScreen } from './components'
+import { ControlButton, PlanetButton, PlanetInfoCard, LoadingScreen, FirstPersonControls } from './components'
 
 export default {
   name: 'App',
@@ -67,7 +80,8 @@ export default {
     ControlButton,
     PlanetButton,
     PlanetInfoCard,
-    LoadingScreen
+    LoadingScreen,
+    FirstPersonControls
   },
   setup() {
     const canvas = ref(null)
@@ -81,12 +95,16 @@ export default {
       followingPlanet,
       isFollowing,
       isAnimating,
+      isFirstPersonMode,
+      currentPlanet,
       initThreeJS,
       focusOnPlanet,
+      enterFirstPersonMode,
       resetCamera,
       startAnimation,
       handleResize,
-      cleanup
+      cleanup,
+      getPlayerInfo
     } = usePlanetSystem()
     
     const {
@@ -111,6 +129,18 @@ export default {
       resetCamera()
       showInfoCard.value = false
     }
+    
+    const handleEnterFirstPerson = () => {
+      if (followingPlanet.value && followingPlanet.value.userData) {
+        enterFirstPersonMode(followingPlanet.value.userData.planetName)
+      }
+    }
+    
+    const handleExitFirstPerson = () => {
+      resetCamera()
+    }
+    
+
 
     // Watch for changes in isPlaying and restart animation
     watch(isPlaying, (newValue) => {
@@ -153,16 +183,20 @@ export default {
       isPlaying,
       followingPlanet,
       isFollowing,
+      isFirstPersonMode,
+      currentPlanet,
       showInfoCard,
       planets,
       toggleAnimation,
       resetCamera: handleCameraReset,
       focusOnPlanet: handlePlanetFocus,
-      getPlanetEmoji,
-      getPlanetDisplayName,
-      getPlanetFacts,
-      getPlanetMoons,
-      getPlanetSatellites
+             getPlanetEmoji,
+       getPlanetDisplayName,
+       getPlanetFacts,
+       getPlanetMoons,
+       getPlanetSatellites,
+       getPlayerInfo,
+       handleEnterFirstPerson
     }
   }
 }
@@ -179,5 +213,11 @@ body {
   width: 100vw;
   height: 100vh;
   cursor: pointer;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1;
 }
+
+
 </style>

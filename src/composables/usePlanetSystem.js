@@ -6,6 +6,7 @@ import { useSpaceBackground } from './useSpaceBackground'
 import { usePostProcessing } from './usePostProcessing'
 import { useMoons } from './useMoons'
 import { useSatellites } from './useSatellites'
+import { useFirstPersonMode } from './useFirstPersonMode'
 
 // Import planet textures
 import earthImgUrl from '../images/earth.jpg'
@@ -40,6 +41,14 @@ export function usePlanetSystem() {
   const { setupPostProcessing, render: renderWithEffects, setSize: setEffectSize } = usePostProcessing()
   const { createMoons, animateMoons, animatePlanetMoons, getMoonInfo } = useMoons()
   const { createSatellites, animateSatellites, animatePlanetSatellites, getSatelliteInfo } = useSatellites()
+  const { 
+    isFirstPersonMode, 
+    currentPlanet, 
+    initFirstPersonMode, 
+    exitFirstPersonMode, 
+    updateFirstPersonMode, 
+    getPlayerInfo 
+  } = useFirstPersonMode()
 
   const initThreeJS = (canvas) => {
     // Setting the renderer
@@ -47,6 +56,8 @@ export function usePlanetSystem() {
     renderer.setPixelRatio(window.devicePixelRatio)
     renderer.setSize(window.innerWidth, window.innerHeight)
     renderer.shadowMap.enabled = true
+    
+
 
     // Setting scene
     scene = new THREE.Scene()
@@ -91,6 +102,13 @@ export function usePlanetSystem() {
     // Setup orbit controls
     controls = new OrbitControls(camera, renderer.domElement)
     
+    // Disable orbit controls when in first-person mode
+    controls.addEventListener('change', () => {
+      if (isFirstPersonMode.value) {
+        controls.enabled = false
+      }
+    })
+    
     // Setup post-processing effects
     setupPostProcessing(renderer, scene, camera)
   }
@@ -118,6 +136,7 @@ export function usePlanetSystem() {
       // Store planet data for easy access
       mesh.userData = {
         planetName: planetName,
+        name: planetConfig ? planetConfig.name : planetName,
         orbitRadius: orbitRadius,
         orbitSpeed: orbitSpeed,
         size: size,
@@ -193,8 +212,14 @@ export function usePlanetSystem() {
     isAnimating.value = true
     const planet = planets[planetName]
     
+    // Check if we should enter first-person mode
+    if (isFirstPersonMode.value) {
+      // Exit first-person mode first
+      exitFirstPersonMode(camera)
+    }
+    
     // Set this planet as the one to follow
-    followingPlanet.value = planetName
+    followingPlanet.value = planet
     isFollowing.value = true
     
     // Get the current planet position
@@ -259,12 +284,52 @@ export function usePlanetSystem() {
     animateCamera()
   }
 
+  const enterFirstPersonMode = (planetName) => {
+    console.log('Entering first-person mode for planet:', planetName)
+    console.log('isAnimating.value:', isAnimating.value)
+    console.log('planets[planetName]:', planets[planetName])
+    console.log('planets object keys:', Object.keys(planets))
+    
+    if (isAnimating.value || !planets[planetName]) {
+      console.log('Cannot enter first-person mode - animating or planet not found')
+      console.log('Reason: isAnimating =', isAnimating.value, ', planet found =', !!planets[planetName])
+      return false
+    }
+    
+    const planet = planets[planetName]
+    console.log('Planet object found: ' + (planet ? 'yes' : 'no'))
+    console.log('Planet object:', planet)
+    
+    // Exit following mode if active
+    if (isFollowing.value) {
+      followingPlanet.value = null
+      isFollowing.value = false
+    }
+    
+    // Enter first-person mode
+    const success = initFirstPersonMode(camera, scene, planet)
+    console.log('First-person mode initialization result:', success)
+    
+    if (success) {
+      // Disable orbit controls
+      controls.enabled = false
+      isAnimating.value = false
+    }
+    
+    return success
+  }
+
   const resetCamera = () => {
     if (isAnimating.value) return
 
     // Stop following any planet
     followingPlanet.value = null
     isFollowing.value = false
+    
+    // Exit first-person mode if active
+    if (isFirstPersonMode.value) {
+      exitFirstPersonMode(camera)
+    }
 
     isAnimating.value = true
     controls.enabled = false
@@ -305,9 +370,9 @@ export function usePlanetSystem() {
   }
 
   const updateCameraFollow = () => {
-    if (!isFollowing.value || !followingPlanet.value || !planets[followingPlanet.value]) return
+    if (!isFollowing.value || !followingPlanet.value) return
     
-    const planet = planets[followingPlanet.value]
+    const planet = followingPlanet.value
     const orbitRadius = planet.userData.orbitRadius
     const currentAngle = planet.userData.currentAngle || 0
     
@@ -334,6 +399,11 @@ export function usePlanetSystem() {
   }
 
   const animate = (isPlaying) => {
+    // Calculate delta time for smooth animations
+    const currentTime = performance.now()
+    const deltaTime = (currentTime - (animate.lastTime || currentTime)) / 1000
+    animate.lastTime = currentTime
+    
     if (!isPlaying) {
       // If paused, still rotate planets but don't move them in orbit
       Object.values(planets).forEach(planet => {
@@ -345,7 +415,9 @@ export function usePlanetSystem() {
       animateSpaceBackground()
       
       // Still render the scene and update controls
-      controls.update()
+      if (!isFirstPersonMode.value) {
+        controls.update()
+      }
       renderWithEffects()
       animationId = requestAnimationFrame(() => animate(isPlaying))
       return
@@ -383,9 +455,16 @@ export function usePlanetSystem() {
 
     // Update camera following if enabled
     updateCameraFollow()
+    
+    // Update first-person mode if active
+    if (isFirstPersonMode.value) {
+      updateFirstPersonMode(deltaTime)
+    }
 
     // Sync the scene with the current state of the orbit control
-    controls.update()
+    if (!isFirstPersonMode.value) {
+      controls.update()
+    }
     renderWithEffects()
   }
 
@@ -414,20 +493,29 @@ export function usePlanetSystem() {
       cancelAnimationFrame(animationId)
     }
   }
+  
+  // Wrapper function to get player info from first-person mode
+  const getPlayerInfoWrapper = () => {
+    return getPlayerInfo()
+  }
 
   return {
     // State
     followingPlanet,
     isFollowing,
     isAnimating,
+    isFirstPersonMode,
+    currentPlanet,
     
     // Methods
     initThreeJS,
     focusOnPlanet,
+    enterFirstPersonMode,
     resetCamera,
     animate,
     startAnimation,
     handleResize,
-    cleanup
+    cleanup,
+    getPlayerInfo: getPlayerInfoWrapper
   }
 }
